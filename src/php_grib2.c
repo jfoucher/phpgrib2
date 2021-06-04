@@ -47,9 +47,8 @@
 // then include the header of your extension
 #include "php_grib2.h"
 
-
-// register our function to the PHP API 
-// so that PHP knows, which functions are in this module
+// Run "make" to build extension, they test it like this : 
+// php -dextension=modules/grib2.so -r "var_dump(php_grib2('gfs.t12z.pgrb2.0p25.f000'));"
 zend_function_entry php_grib2_functions[] = {
     PHP_FE(php_grib2, NULL)
     PHP_FE_END
