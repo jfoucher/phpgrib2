@@ -1,0 +1,8 @@
+src/php_grib2.lo: /Users/jonathan/Downloads/g2clib-1.6.3/php_grib2/src/php_grib2.c
+	$(LIBTOOL) --mode=compile $(CC)  -I. -I/Users/jonathan/Downloads/g2clib-1.6.3/php_grib2 $(COMMON_FLAGS) $(CFLAGS_CLEAN) $(EXTRA_CFLAGS)  -c /Users/jonathan/Downloads/g2clib-1.6.3/php_grib2/src/php_grib2.c -o src/php_grib2.lo 
+$(phplibdir)/grib2.la: ./grib2.la
+	$(LIBTOOL) --mode=install cp ./grib2.la $(phplibdir)
+
+./grib2.la: $(shared_objects_grib2) $(GRIB2_SHARED_DEPENDENCIES)
+	$(LIBTOOL) --mode=link $(CC) $(COMMON_FLAGS) $(CFLAGS_CLEAN) $(EXTRA_CFLAGS) $(LDFLAGS)  -o $@ -export-dynamic -avoid-version -prefer-pic -module -rpath $(phplibdir) $(EXTRA_LDFLAGS) $(shared_objects_grib2) $(GRIB2_SHARED_LIBADD)
+
