@@ -43,6 +43,8 @@
 #include "../grib2c/getpoly.c" 
 #include "../grib2c/seekgb.c"
 
+#include "tables.h"
+
 
 // then include the header of your extension
 #include "php_grib2.h"
@@ -87,7 +89,7 @@ PHP_FUNCTION(php_grib2) {
     unsigned char *cgrib;
     g2int  listsec0[3],listsec1[13],numlocal,numfields;
     long   lskip,n,lgrib,iseek, k;
-    int    unpack,ret,ierr,expand;
+    int    unpack,ret,ierr,expand, start_lon, start_lat, lat_points, lon_points, lat_step, lon_step;
     gribfield  *gfld;
     FILE   *fptr;
     size_t  lengrib;
@@ -109,6 +111,7 @@ PHP_FUNCTION(php_grib2) {
         expand=1;
         fptr=fopen(filename,"r");
         zval item;
+        zval data;
 
         if (fptr != NULL) {
             
@@ -121,89 +124,148 @@ PHP_FUNCTION(php_grib2) {
                 lengrib=fread(cgrib,sizeof(unsigned char),lgrib,fptr);
                 iseek=lskip+lgrib;
                 ierr=g2_info(cgrib,listsec0,listsec1,&numfields,&numlocal);
+
+
+
                 for (n=0;n<numfields;n++) {
 
                     ierr=g2_getfld(cgrib,n+1,unpack,expand,&gfld);
 
+                    //Validity checks
+
+                    // Wrong grid type
+                    // https://www.nco.ncep.noaa.gov/pmb/docs/grib2/grib2_doc/grib2_table3-0.shtml
+                    if (gfld->griddef != 0) {
+                        break;
+                    }
+
+                    // Points not defined by lat / lng
+                    // https://www.nco.ncep.noaa.gov/pmb/docs/grib2/grib2_doc/grib2_table3-1.shtml
+                    if (gfld->igdtnum != 0) {
+                        break;
+                    }
+
+                    // We only handle regular forecasts
+                    // https://www.nco.ncep.noaa.gov/pmb/docs/grib2/grib2_doc/grib2_table4-0.shtml
+                    if (gfld->ipdtnum != 0) {
+                        break;
+                    }
+
+                    // We only handle categories 0 to 2
+                    // https://www.nco.ncep.noaa.gov/pmb/docs/grib2/grib2_doc/grib2_table4-0.shtml
+                    if (*(gfld->ipdtmpl) > 2) {
+                        break;
+                    }
+
+                    lat_points = *(gfld->igdtmpl+8);
+                    lon_points = *(gfld->igdtmpl+7);
+                    lat_step = *(gfld->igdtmpl+17);
+                    lon_step = *(gfld->igdtmpl+16);
+                    start_lat = *(gfld->igdtmpl+11);
+                    start_lon = *(gfld->igdtmpl+12);
+
+                    long cat = *(gfld->ipdtmpl);
+                    long prod = *(gfld->ipdtmpl + 1);
+
+                    const char* prod_name = products[cat*21+prod];
+
                     //php_printf("%ld-%ld-%ld %ld:%ld:%ld\n", gfld->idsect[5], gfld->idsect[6], gfld->idsect[7], gfld->idsect[8], gfld->idsect[9], gfld->idsect[10]);
 
                     array_init(&item);
+                    array_init(&data);
 
                     char buffer[50];
                     char kbuffer[50];
-                    snprintf(buffer, 10, "%lu", gfld->ndpts);
-                    add_assoc_string_ex(&item, "pts", 3, buffer);
 
                     g2float *p = gfld->fld;
                     long *v = gfld->ipdtmpl;
                     long *f = gfld->igdtmpl;
 
-                    if (gfld->ndpts < 100) {
-for (k=0; k < gfld->ndpts; k++) {
-                        snprintf(buffer, 50, "%f", *p);
-                        snprintf(kbuffer, 50, "data%lu", k);
-                        int length = snprintf( NULL, 0, "%f", *p );
-                        add_assoc_string_ex(&item, kbuffer, length+4, buffer);
+                    // These are the data points
+
+                    for (k=0; k < gfld->ndpts; k++) {
+                        add_next_index_double(&data, *p);
                         p++;
                     }
-                    }
-                    snprintf(buffer, 10, "%lu", gfld->ipdtnum);
-                    add_assoc_string_ex(&item, "ipdtnum", 7, buffer);
 
-                    snprintf(buffer, 10, "%lu", gfld->ipdtlen);
-                    add_assoc_string_ex(&item, "ipdtlen", 7, buffer);
-
-                    // https://www.nco.ncep.noaa.gov/pmb/docs/grib2/grib2_doc/grib2_table4-2-0-2.shtml
-                    for (k=0; k < gfld->ipdtlen; k++) {
-                        snprintf(buffer, 50, "%ld", *v);
-                        snprintf(kbuffer, 50, "ipdt %ld", k);
-                        int length = snprintf( NULL, 0, "%ld", *v );
-                        add_assoc_string_ex(&item, kbuffer, length+6, buffer);
-                        v++;
-                    }
-
-                    // if ipdt 1 == 3 => V-Component of Wind
-                    // if ipdt 1 == 2 => U-Component of Wind
-
-                    snprintf(buffer, 10, "%lu", gfld->igdtlen);
-                    add_assoc_string_ex(&item, "igdtlen", 7, buffer);
-
-                    snprintf(buffer, 10, "%lu", gfld->idrtnum);
-                    add_assoc_string_ex(&item, "idrtnum", 7, buffer);
-
-                    snprintf(buffer, 10, "%lu", gfld->ipdtlen);
-                    add_assoc_string_ex(&item, "ipdtlen", 7, buffer);
-
-                    snprintf(buffer, 10, "%lu", gfld->interp_opt);
-                    add_assoc_string_ex(&item, "interp_opt", 12, buffer);
-
-                    snprintf(buffer, 10, "%lu", gfld->idsect[5]);
-
-                    add_assoc_string_ex(&item, "year", 4, buffer);
-                    snprintf(buffer, 10, "%lu", gfld->idsect[6]);
-                    add_assoc_string_ex(&item, "month", 5, buffer);
-                    snprintf(buffer, 10, "%lu", gfld->idsect[7]);
-                    add_assoc_string_ex(&item, "day", 3, buffer);
-                    snprintf(buffer, 10, "%lu", gfld->idsect[8]);
-                    add_assoc_string_ex(&item, "hour", 4, buffer);
-                    snprintf(buffer, 10, "%lu", gfld->idsect[9]);
-                    add_assoc_string_ex(&item, "min", 3, buffer);
-                    snprintf(buffer, 10, "%lu", gfld->idsect[10]);
-                    add_assoc_string_ex(&item, "sec", 3, buffer);
-                    snprintf(buffer, 10, "%lu", gfld->locallen);
-                    add_assoc_string_ex(&item, "locallen", 8, buffer);
-                    snprintf(buffer, 10, "%ld", gfld->igdtnum);
-                    add_assoc_string_ex(&item, "igdtnum", 7, buffer);
+                    add_assoc_zval(&item, "data", &data);
 
 
+                    // This is the grid definition
                     // https://www.nco.ncep.noaa.gov/pmb/docs/grib2/grib2_doc/grib2_temp3-0.shtml
-                    for (k=0; k < gfld->igdtlen; k++) {
-                        snprintf(buffer, 50, "%ld", *f);
-                        snprintf(kbuffer, 50, "igdt %ld", k);
-                        int length = snprintf( NULL, 0, "%ld", *f );
-                        add_assoc_string_ex(&item, kbuffer, length+6, buffer);
-                        f++;
-                    }
+                    // for (k=0; k < gfld->igdtlen; k++) {
+                    //     snprintf(buffer, 50, "%ld", *f);
+                    //     snprintf(kbuffer, 50, "igdt %ld", k);
+                    //     int length = snprintf( NULL, 0, "%ld", *f );
+                    //     add_assoc_string_ex(&item, kbuffer, length+6, buffer);
+                    //     f++;
+                    // }
+
+
+                    // snprintf(buffer, 10, "%lu", gfld->ipdtnum);
+                    // add_assoc_string_ex(&item, "ipdtnum", 7, buffer);
+
+                    // snprintf(buffer, 10, "%lu", gfld->ipdtlen);
+                    // add_assoc_string_ex(&item, "ipdtlen", 7, buffer);
+
+                    // https://www.nco.ncep.noaa.gov/pmb/docs/grib2/grib2_doc/grib2_table4-1.shtml
+                    // https://www.nco.ncep.noaa.gov/pmb/docs/grib2/grib2_doc/grib2_table4-2-0-2.shtml
+                    // for (k=0; k < gfld->ipdtlen; k++) {
+                    //     snprintf(buffer, 50, "%ld", *v);
+                    //     snprintf(kbuffer, 50, "ipdt %ld", k);
+                    //     int length = snprintf( NULL, 0, "%ld", *v );
+                    //     add_assoc_string_ex(&item, kbuffer, length+6, buffer);
+                    //     v++;
+                    // }
+
+                    // // if ipdt 1 == 3 => V-Component of Wind
+                    // // if ipdt 1 == 2 => U-Component of Wind
+
+                    snprintf(buffer, 10, "%ld", cat);
+                    add_assoc_string_ex(&item, "category", 8, buffer);
+
+                    snprintf(buffer, 10, "%ld", prod);
+                    add_assoc_string_ex(&item, "product", 7, buffer);
+
+                    add_assoc_string_ex(&item, "name", 4, prod_name);
+
+                    add_assoc_long_ex(&item, "lat_points", 4, lat_points);
+                    add_assoc_long_ex(&item, "lon_points", 4, lon_points);
+                    add_assoc_long_ex(&item, "lat_step", 4, lat_step);
+                    add_assoc_long_ex(&item, "lon_step", 4, lon_step);
+                    add_assoc_long_ex(&item, "start_lat", 4, start_lat);
+                    add_assoc_long_ex(&item, "start_lon", 4, start_lon);
+
+                    // snprintf(buffer, 10, "%lu", gfld->ipdtlen);
+                    // add_assoc_string_ex(&item, "ipdtlen", 7, buffer);
+
+                    // snprintf(buffer, 10, "%lu", gfld->interp_opt);
+                    // add_assoc_string_ex(&item, "interp_opt", 12, buffer);
+
+                    // snprintf(buffer, 10, "%lu", gfld->idsect[5]);
+
+                    // add_assoc_string_ex(&item, "year", 4, buffer);
+                    // snprintf(buffer, 10, "%lu", gfld->idsect[6]);
+                    // add_assoc_string_ex(&item, "month", 5, buffer);
+                    // snprintf(buffer, 10, "%lu", gfld->idsect[7]);
+                    // add_assoc_string_ex(&item, "day", 3, buffer);
+                    // snprintf(buffer, 10, "%lu", gfld->idsect[8]);
+                    // add_assoc_string_ex(&item, "hour", 4, buffer);
+                    // snprintf(buffer, 10, "%lu", gfld->idsect[9]);
+                    // add_assoc_string_ex(&item, "min", 3, buffer);
+                    // snprintf(buffer, 10, "%lu", gfld->idsect[10]);
+                    // add_assoc_string_ex(&item, "sec", 3, buffer);
+                    // snprintf(buffer, 10, "%lu", gfld->locallen);
+                    // add_assoc_string_ex(&item, "locallen", 8, buffer);
+
+
+                    // snprintf(buffer, 10, "%ld", gfld->igdtnum);
+                    // add_assoc_string_ex(&item, "igdtnum", 7, buffer);
+
+                    
+
+
+                    
                     
                     // int length = snprintf( NULL, 0, "%ld", gfld->version );
                     // char* str = malloc( length + 1 );
@@ -211,7 +273,7 @@ for (k=0; k < gfld->ndpts; k++) {
                     // snprintf( str, length + 1, "%ld", gfld->idsect[5] );
                     // PHPWRITE(str, length);
 
-                    add_next_index_zval(&results, &item);
+                    add_assoc_zval(&results, prod_name, &item);
                     g2_free(gfld);
                 }
                 
