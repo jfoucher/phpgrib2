@@ -73,15 +73,24 @@ zend_module_entry grib2_module_entry = {
 // use a macro to output additional C code, to make ext dynamically loadable
 ZEND_GET_MODULE(grib2)
 
-
-
-// Finally, we implement our "Hello World" function
-// this function will be made available to PHP
-// and prints to PHP stdout using printf
+/**
+ * This function reads a grib file and return a php array containg all available grib message
+ * Each message is an associative array formatted as follows : 
+ * [
+ *  "data" => all data points value for the current message
+ *  "category" => the product category from https://www.nco.ncep.noaa.gov/pmb/docs/grib2/grib2_doc/grib2_table4-1.shtml
+ *  "product" => the product from tables 4.category, e.g. https://www.nco.ncep.noaa.gov/pmb/docs/grib2/grib2_doc/grib2_table4-2-0-0.shtml
+ *  "lat_points" => the number of points on each meridian
+ *  "lon_points" => the number of points on each parallel
+ *  "lat_step" => the number of degrees to go from one point to the next in latitude (units : 10^-6 degs)
+ *  "lon_step" => the number of degrees to go from one point to the next in longitude (units : 10^-6 degs)
+ *  "start_lat" => the starting latitude (units : 10^-6 degs)
+ *  "start_lon" => the starting longitude (units : 10^-6 degs)
+ * ]
+ * 
+ * 
+**/
 PHP_FUNCTION(read_grib2_file) {
-    php_printf("Hello World! (from our extension)\n");
-
-    //input vars
     char *filename;
     size_t filename_len;
 
@@ -136,24 +145,28 @@ PHP_FUNCTION(read_grib2_file) {
                     // Wrong grid type
                     // https://www.nco.ncep.noaa.gov/pmb/docs/grib2/grib2_doc/grib2_table3-0.shtml
                     if (gfld->griddef != 0) {
+                        add_assoc_string_ex(&results, "error", 5, "Could not read Grib2 data: Wrong grid type");
                         break;
                     }
 
                     // Points not defined by lat / lng
                     // https://www.nco.ncep.noaa.gov/pmb/docs/grib2/grib2_doc/grib2_table3-1.shtml
                     if (gfld->igdtnum != 0) {
+                        add_assoc_string_ex(&results, "error", 5, "Could not read Grib2 data: Points not defined by lat / lng");
                         break;
                     }
 
                     // We only handle regular forecasts
                     // https://www.nco.ncep.noaa.gov/pmb/docs/grib2/grib2_doc/grib2_table4-0.shtml
                     if (gfld->ipdtnum != 0) {
+                        add_assoc_string_ex(&results, "error", 5, "Could not read Grib2 data: Not a regular forecast");
                         break;
                     }
 
                     // We only handle categories 0 to 2
                     // https://www.nco.ncep.noaa.gov/pmb/docs/grib2/grib2_doc/grib2_table4-0.shtml
                     if (*(gfld->ipdtmpl) > 2) {
+                        add_assoc_string_ex(&results, "error", 5, "Could not read Grib2 data: Product category handling not implementend");
                         break;
                     }
 
@@ -167,7 +180,11 @@ PHP_FUNCTION(read_grib2_file) {
                     long cat = *(gfld->ipdtmpl);
                     long prod = *(gfld->ipdtmpl + 1);
 
-                    const char* prod_name = products[cat*21+prod];
+                    const char* prod_name = "Unknown";
+
+                    if (*(gfld->ipdtmpl) <= 2) {
+                        prod_name = products[cat*21+prod];
+                    }
 
                     //php_printf("%ld-%ld-%ld %ld:%ld:%ld\n", gfld->idsect[5], gfld->idsect[6], gfld->idsect[7], gfld->idsect[8], gfld->idsect[9], gfld->idsect[10]);
 
@@ -221,11 +238,10 @@ PHP_FUNCTION(read_grib2_file) {
                     // // if ipdt 1 == 3 => V-Component of Wind
                     // // if ipdt 1 == 2 => U-Component of Wind
 
-                    snprintf(buffer, 10, "%ld", cat);
-                    add_assoc_string_ex(&item, "category", 8, buffer);
 
-                    snprintf(buffer, 10, "%ld", prod);
-                    add_assoc_string_ex(&item, "product", 7, buffer);
+                    add_assoc_long_ex(&item, "category", 8, cat);
+
+                    add_assoc_long_ex(&item, "product", 7, prod);
 
                     add_assoc_string_ex(&item, "name", 4, prod_name);
 
@@ -235,44 +251,6 @@ PHP_FUNCTION(read_grib2_file) {
                     add_assoc_long_ex(&item, "lon_step", 4, lon_step);
                     add_assoc_long_ex(&item, "start_lat", 4, start_lat);
                     add_assoc_long_ex(&item, "start_lon", 4, start_lon);
-
-                    // snprintf(buffer, 10, "%lu", gfld->ipdtlen);
-                    // add_assoc_string_ex(&item, "ipdtlen", 7, buffer);
-
-                    // snprintf(buffer, 10, "%lu", gfld->interp_opt);
-                    // add_assoc_string_ex(&item, "interp_opt", 12, buffer);
-
-                    // snprintf(buffer, 10, "%lu", gfld->idsect[5]);
-
-                    // add_assoc_string_ex(&item, "year", 4, buffer);
-                    // snprintf(buffer, 10, "%lu", gfld->idsect[6]);
-                    // add_assoc_string_ex(&item, "month", 5, buffer);
-                    // snprintf(buffer, 10, "%lu", gfld->idsect[7]);
-                    // add_assoc_string_ex(&item, "day", 3, buffer);
-                    // snprintf(buffer, 10, "%lu", gfld->idsect[8]);
-                    // add_assoc_string_ex(&item, "hour", 4, buffer);
-                    // snprintf(buffer, 10, "%lu", gfld->idsect[9]);
-                    // add_assoc_string_ex(&item, "min", 3, buffer);
-                    // snprintf(buffer, 10, "%lu", gfld->idsect[10]);
-                    // add_assoc_string_ex(&item, "sec", 3, buffer);
-                    // snprintf(buffer, 10, "%lu", gfld->locallen);
-                    // add_assoc_string_ex(&item, "locallen", 8, buffer);
-
-
-                    // snprintf(buffer, 10, "%ld", gfld->igdtnum);
-                    // add_assoc_string_ex(&item, "igdtnum", 7, buffer);
-
-                    
-
-
-                    
-                    
-                    // int length = snprintf( NULL, 0, "%ld", gfld->version );
-                    // char* str = malloc( length + 1 );
-
-                    // snprintf( str, length + 1, "%ld", gfld->idsect[5] );
-                    // PHPWRITE(str, length);
-
                     add_assoc_zval(&results, prod_name, &item);
                     g2_free(gfld);
                 }
@@ -288,16 +266,18 @@ PHP_FUNCTION(read_grib2_file) {
             php_printf("File %s does not exist\n", filename);
             zend_throw_exception(zend_exception_get_default(TSRMLS_C), "File does not exist", 0 TSRMLS_CC);
         }
-        
-
-
-
     }
-
-    
-
-    //RETVAL_STRINGL(out, out_len);
-
     return;
-
 }
+
+
+// {
+//   "type": "Feature",
+//   "geometry": {
+//     "type": "Point",
+//     "coordinates": [125.6, 10.1]
+//   },
+//   "properties": {
+//     "name": "Dinagat Islands"
+//   }
+// }
