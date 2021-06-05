@@ -196,7 +196,7 @@ void misspack(g2float *fld,g2int ndpts,g2int idrsnum,g2int *idrstmpl,
            //   find num of bits need to store minsd and add 1 extra bit
            //   to indicate sign
            //
-           temp=log((double)(abs(minsd)+1))/alog2;
+           temp=log((double)(labs(minsd)+1))/alog2;
            nbitsd=(g2int)ceil(temp)+1;
            //
            //   find num of bits need to store ifld[0] ( and ifld[1]
@@ -222,7 +222,7 @@ void misspack(g2float *fld,g2int ndpts,g2int idrsnum,g2int *idrstmpl,
               else {
                  sbit(cpack,&one,iofst,1);
                  iofst=iofst+1;
-                 itemp=abs(ival1);
+                 itemp=labs(ival1);
                  sbit(cpack,&itemp,iofst,nbitsd-1);
                  iofst=iofst+nbitsd-1;
               }
@@ -235,7 +235,7 @@ void misspack(g2float *fld,g2int ndpts,g2int idrsnum,g2int *idrstmpl,
                  else {
                     sbit(cpack,&one,iofst,1);
                     iofst=iofst+1;
-                    itemp=abs(ival2);
+                    itemp=labs(ival2);
                     sbit(cpack,&itemp,iofst,nbitsd-1);
                     iofst=iofst+nbitsd-1;
                  }
@@ -248,7 +248,7 @@ void misspack(g2float *fld,g2int ndpts,g2int idrsnum,g2int *idrstmpl,
               else {
                  sbit(cpack,&one,iofst,1);
                  iofst=iofst+1;
-                 itemp=abs(minsd);
+                 itemp=labs(minsd);
                  sbit(cpack,&itemp,iofst,nbitsd-1);
                  iofst=iofst+nbitsd-1;
               }

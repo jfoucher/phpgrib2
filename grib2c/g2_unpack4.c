@@ -114,7 +114,7 @@ g2int g2_unpack4(unsigned char *cgrib,g2int *iofst,g2int *ipdsnum,g2int **ipdstm
          *ipdstmpl=lipdstmpl;
       }
       for (i=0;i<mappds->maplen;i++) {
-        nbits=abs(mappds->map[i])*8;
+        nbits=labs(mappds->map[i])*8;
         if ( mappds->map[i] >= 0 ) {
           gbit(cgrib,lipdstmpl+i,*iofst,nbits);
         }
@@ -141,7 +141,7 @@ g2int g2_unpack4(unsigned char *cgrib,g2int *iofst,g2int *ipdsnum,g2int **ipdstm
         //   Unpack the rest of the Product Definition Template
         j=0;
         for (i=*mappdslen;i<newlen;i++) {
-          nbits=abs(mappds->ext[j])*8;
+          nbits=labs(mappds->ext[j])*8;
           if ( mappds->ext[j] >= 0 ) {
             gbit(cgrib,lipdstmpl+i,*iofst,nbits);
           }

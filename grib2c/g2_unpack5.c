@@ -105,7 +105,7 @@ g2int g2_unpack5(unsigned char *cgrib,g2int *iofst,g2int *ndpts,g2int *idrsnum,
          *idrstmpl=lidrstmpl;
       }
       for (i=0;i<mapdrs->maplen;i++) {
-        nbits=abs(mapdrs->map[i])*8;
+        nbits=labs(mapdrs->map[i])*8;
         if ( mapdrs->map[i] >= 0 ) {
           gbit(cgrib,lidrstmpl+i,*iofst,nbits);
         }
@@ -132,7 +132,7 @@ g2int g2_unpack5(unsigned char *cgrib,g2int *iofst,g2int *ndpts,g2int *idrsnum,
         //   Unpack the rest of the Data Representation Template
         j=0;
         for (i=*mapdrslen;i<newlen;i++) {
-          nbits=abs(mapdrs->ext[j])*8;
+          nbits=labs(mapdrs->ext[j])*8;
           if ( mapdrs->ext[j] >= 0 ) {
             gbit(cgrib,lidrstmpl+i,*iofst,nbits);
           }

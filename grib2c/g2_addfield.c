@@ -252,12 +252,12 @@ g2int g2_addfield(unsigned char *cgrib,g2int ipdsnum,g2int *ipdstmpl,
       //   corresponding entries in array mappds.
       //
       for (i=0;i<mappds->maplen;i++) {
-        nbits=abs(mappds->map[i])*8;
+        nbits=labs(mappds->map[i])*8;
         if ( (mappds->map[i] >= 0) || (ipdstmpl[i] >= 0) )
           sbit(cgrib,ipdstmpl+i,iofst,nbits);
         else {
           sbit(cgrib,&one,iofst,1);
-          temp=abs(ipdstmpl[i]);
+          temp=labs(ipdstmpl[i]);
           sbit(cgrib,&temp,iofst+1,nbits-1);
         }
         iofst=iofst+nbits;
@@ -266,12 +266,12 @@ g2int g2_addfield(unsigned char *cgrib,g2int ipdsnum,g2int *ipdstmpl,
       j=mappds->maplen;
       if ( mappds->needext && (mappds->extlen > 0) ) {
          for (i=0;i<mappds->extlen;i++) {
-           nbits=abs(mappds->ext[i])*8;
+           nbits=labs(mappds->ext[i])*8;
            if ( (mappds->ext[i] >= 0) || (ipdstmpl[j] >= 0) )
              sbit(cgrib,ipdstmpl+j,iofst,nbits);
            else {
              sbit(cgrib,&one,iofst,1);
-             temp=abs(ipdstmpl[j]);
+             temp=labs(ipdstmpl[j]);
              sbit(cgrib,&temp,iofst+1,nbits-1);
            }
            iofst=iofst+nbits;
@@ -424,12 +424,12 @@ g2int g2_addfield(unsigned char *cgrib,g2int ipdsnum,g2int *ipdstmpl,
       //   corresponding entries in array mapdrs.
       //
       for (i=0;i<mapdrs->maplen;i++) {
-        nbits=abs(mapdrs->map[i])*8;
+        nbits=labs(mapdrs->map[i])*8;
         if ( (mapdrs->map[i] >= 0) || (idrstmpl[i] >= 0) )
           sbit(cgrib,idrstmpl+i,iofst,nbits);
         else {
           sbit(cgrib,&one,iofst,1);
-          temp=abs(idrstmpl[i]);
+          temp=labs(idrstmpl[i]);
           sbit(cgrib,&temp,iofst+1,nbits-1);
         }
         iofst=iofst+nbits;

@@ -135,7 +135,7 @@ g2int g2_unpack3(unsigned char *cgrib,g2int *iofst,g2int **igds,g2int **igdstmpl
         }
         ibyttem=0;
         for (i=0;i<*mapgridlen;i++) {
-          nbits=abs(mapgrid->map[i])*8;
+          nbits=labs(mapgrid->map[i])*8;
           if ( mapgrid->map[i] >= 0 ) {
             gbit(cgrib,ligdstmpl+i,*iofst,nbits);
           }
@@ -145,7 +145,7 @@ g2int g2_unpack3(unsigned char *cgrib,g2int *iofst,g2int **igds,g2int **igdstmpl
             if (isign == 1) ligdstmpl[i]=-1*ligdstmpl[i];
           }
           *iofst=*iofst+nbits;
-          ibyttem=ibyttem+abs(mapgrid->map[i]);
+          ibyttem=ibyttem+labs(mapgrid->map[i]);
         }
         //
         //   Check to see if the Grid Definition Template needs to be
@@ -163,7 +163,7 @@ g2int g2_unpack3(unsigned char *cgrib,g2int *iofst,g2int **igds,g2int **igdstmpl
           *igdstmpl=ligdstmpl;
           j=0;
           for (i=*mapgridlen;i<newlen;i++) {
-            nbits=abs(mapgrid->ext[j])*8;
+            nbits=labs(mapgrid->ext[j])*8;
             if ( mapgrid->ext[j] >= 0 ) {
               gbit(cgrib,ligdstmpl+i,*iofst,nbits);
             }
@@ -173,7 +173,7 @@ g2int g2_unpack3(unsigned char *cgrib,g2int *iofst,g2int **igds,g2int **igdstmpl
               if (isign == 1) ligdstmpl[i]=-1*ligdstmpl[i];
             }
             *iofst=*iofst+nbits;
-            ibyttem=ibyttem+abs(mapgrid->ext[j]);
+            ibyttem=ibyttem+labs(mapgrid->ext[j]);
             j++;
           }
           *mapgridlen=newlen;

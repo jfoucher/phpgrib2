@@ -190,12 +190,12 @@ g2int g2_addgrid(unsigned char *cgrib,g2int *igds,g2int *igdstmpl,g2int *ideflis
       //   corresponding entries in array mapgrid.
       //
       for (i=0;i<mapgrid->maplen;i++) {
-        nbits=abs(mapgrid->map[i])*8;
+        nbits=labs(mapgrid->map[i])*8;
         if ( (mapgrid->map[i] >= 0) || (igdstmpl[i] >= 0) )
           sbit(cgrib,igdstmpl+i,iofst,nbits);
         else {
           sbit(cgrib,&one,iofst,1);
-          temp=abs(igdstmpl[i]);
+          temp=labs(igdstmpl[i]);
           sbit(cgrib,&temp,iofst+1,nbits-1);
         }
         iofst=iofst+nbits;
@@ -204,12 +204,12 @@ g2int g2_addgrid(unsigned char *cgrib,g2int *igds,g2int *igdstmpl,g2int *ideflis
       j=mapgrid->maplen;
       if ( mapgrid->needext && (mapgrid->extlen > 0) ) {
          for (i=0;i<mapgrid->extlen;i++) {
-           nbits=abs(mapgrid->ext[i])*8;
+           nbits=labs(mapgrid->ext[i])*8;
            if ( (mapgrid->ext[i] >= 0) || (igdstmpl[j] >= 0) )
              sbit(cgrib,igdstmpl+j,iofst,nbits);
            else {
              sbit(cgrib,&one,iofst,1);
-             temp=abs(igdstmpl[j]);
+             temp=labs(igdstmpl[j]);
              sbit(cgrib,&temp,iofst+1,nbits-1);
            }
            iofst=iofst+nbits;
