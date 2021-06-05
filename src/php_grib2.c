@@ -51,16 +51,16 @@
 
 // Run "make" to build extension, they test it like this : 
 // php -dextension=modules/grib2.so -r "var_dump(php_grib2('gfs.t12z.pgrb2.0p25.f000'));"
-zend_function_entry php_grib2_functions[] = {
-    PHP_FE(php_grib2, NULL)
+zend_function_entry grib2_functions[] = {
+    PHP_FE(read_grib2_file, NULL)
     PHP_FE_END
 };
 
 // some pieces of information about our module
-zend_module_entry grib2php_module_entry = {
+zend_module_entry grib2_module_entry = {
     STANDARD_MODULE_HEADER,
     PHP_GRIB2_EXTNAME,
-    php_grib2_functions,
+    grib2_functions,
     NULL,
     NULL,
     NULL,
@@ -71,14 +71,14 @@ zend_module_entry grib2php_module_entry = {
 };
 
 // use a macro to output additional C code, to make ext dynamically loadable
-ZEND_GET_MODULE(grib2php)
+ZEND_GET_MODULE(grib2)
 
 
 
 // Finally, we implement our "Hello World" function
 // this function will be made available to PHP
 // and prints to PHP stdout using printf
-PHP_FUNCTION(php_grib2) {
+PHP_FUNCTION(read_grib2_file) {
     php_printf("Hello World! (from our extension)\n");
 
     //input vars
