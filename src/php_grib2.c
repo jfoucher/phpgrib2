@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 #include <zend_exceptions.h>
 
 #include "../grib2c/grib2.h"
@@ -53,6 +54,7 @@
 // php -dextension=modules/grib2.so -r "var_dump(php_grib2('gfs.t12z.pgrb2.0p25.f000'));"
 zend_function_entry grib2_functions[] = {
     PHP_FE(read_grib2_file, NULL)
+    PHP_FE(grib2_file_to_geojson, NULL)
     PHP_FE_END
 };
 
@@ -86,6 +88,7 @@ ZEND_GET_MODULE(grib2)
  *  "lon_step" => the number of degrees to go from one point to the next in longitude (units : 10^-6 degs)
  *  "start_lat" => the starting latitude (units : 10^-6 degs)
  *  "start_lon" => the starting longitude (units : 10^-6 degs)
+ *  "datetime" => forecast date and time
  * ]
  * 
  * 
@@ -105,6 +108,7 @@ PHP_FUNCTION(read_grib2_file) {
 
 
     if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "s", &filename, &filename_len) == FAILURE) {
+        zend_throw_exception(zend_exception_get_default(TSRMLS_C), "File argument required", 0 TSRMLS_CC);
         RETURN_NULL();
     }
 
@@ -207,6 +211,9 @@ PHP_FUNCTION(read_grib2_file) {
 
                     add_assoc_zval(&item, "data", &data);
 
+                    snprintf(buffer, 20, "%ld-%ld-%ld %ld:%ld:%ld\n", gfld->idsect[5], gfld->idsect[6], gfld->idsect[7], gfld->idsect[8], gfld->idsect[9], gfld->idsect[10]);
+                    add_assoc_string(&item, "datetime", buffer);
+
 
                     // This is the grid definition
                     // https://www.nco.ncep.noaa.gov/pmb/docs/grib2/grib2_doc/grib2_temp3-0.shtml
@@ -271,13 +278,276 @@ PHP_FUNCTION(read_grib2_file) {
 }
 
 
-// {
-//   "type": "Feature",
-//   "geometry": {
-//     "type": "Point",
-//     "coordinates": [125.6, 10.1]
-//   },
-//   "properties": {
-//     "name": "Dinagat Islands"
-//   }
-// }
+
+
+PHP_FUNCTION(grib2_file_to_geojson) {
+    char *filename;
+    size_t filename_len;
+
+    // grib vars
+    unsigned char *cgrib;
+    g2int  listsec0[3],listsec1[13],numlocal,numfields;
+    long   lskip,n,lgrib,iseek, k;
+    int    unpack,ret,ierr,expand, start_lon, start_lat, lat_points, lon_points, lat_step, lon_step;
+    gribfield  *gfld;
+    FILE   *fptr;
+    size_t  lengrib;
+
+
+    if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "s", &filename, &filename_len) == FAILURE) {
+        zend_throw_exception(zend_exception_get_default(TSRMLS_C), "File argument required", 0 TSRMLS_CC);
+        RETURN_NULL();
+    }
+
+
+    if (filename_len) {
+        //We have a filename, so parse it
+        zval results;
+
+        array_init(&results);
+
+        long highest_index = 0;
+
+        iseek=0;
+        unpack=1;
+        expand=1;
+        fptr=fopen(filename,"r");
+        
+        zval data;
+
+        long field = 0;
+        long totalfields = 0;
+
+
+        if (fptr != NULL) {
+            php_printf("File %s loaded\n", filename);
+
+            long numpoints;
+            long point_index;
+
+            for (;;) {
+                seekgb(fptr, iseek, 32000, &lskip, &lgrib);
+                if (lgrib == 0) break;    // end loop at EOF or problem
+                cgrib=(unsigned char *)malloc(lgrib);
+                ret=fseek(fptr,lskip,SEEK_SET);
+                lengrib=fread(cgrib,sizeof(unsigned char),lgrib,fptr);
+                iseek=lskip+lgrib;
+                ierr=g2_info(cgrib,listsec0,listsec1,&numfields,&numlocal);
+                for (n=0;n<numfields;n++) {
+                    long point_index = 0;
+                    ierr=g2_getfld(cgrib,n+1,unpack,expand,&gfld);
+
+                    numpoints = gfld->ndpts;
+                    totalfields++;
+                }
+            }
+            php_printf("num points %ld\n", numpoints);
+            zval points[numpoints];
+            float points_values[numfields * numpoints];
+            char* field_names[numfields];
+            zval points_geometries[numpoints];
+            iseek = 0;
+
+            for (;;) {
+                
+                seekgb(fptr, iseek, 32000, &lskip, &lgrib);
+                if (lgrib == 0) break;    // end loop at EOF or problem
+                cgrib=(unsigned char *)malloc(lgrib);
+                ret=fseek(fptr,lskip,SEEK_SET);
+                lengrib=fread(cgrib,sizeof(unsigned char),lgrib,fptr);
+                iseek=lskip+lgrib;
+                ierr=g2_info(cgrib,listsec0,listsec1,&numfields,&numlocal);
+                //Date
+                // snprintf(buffer, 20, "%ld-%ld-%ld %ld:%ld:%ld\n", gfld->idsect[5], gfld->idsect[6], gfld->idsect[7], gfld->idsect[8], gfld->idsect[9], gfld->idsect[10]);
+                // add_assoc_string(&item, "datetime", buffer);
+
+                for (n=0;n<numfields;n++) {
+                    point_index = 0;
+                    ierr=g2_getfld(cgrib,n+1,unpack,expand,&gfld);
+
+                    //Validity checks
+
+                    // Wrong grid type
+                    // https://www.nco.ncep.noaa.gov/pmb/docs/grib2/grib2_doc/grib2_table3-0.shtml
+                    if (gfld->griddef != 0) {
+                        add_assoc_string_ex(&results, "error", 5, "Could not read Grib2 data: Wrong grid type");
+                        break;
+                    }
+
+                    // Points not defined by lat / lng
+                    // https://www.nco.ncep.noaa.gov/pmb/docs/grib2/grib2_doc/grib2_table3-1.shtml
+                    if (gfld->igdtnum != 0) {
+                        add_assoc_string_ex(&results, "error", 5, "Could not read Grib2 data: Points not defined by lat / lng");
+                        break;
+                    }
+
+                    // We only handle regular forecasts
+                    // https://www.nco.ncep.noaa.gov/pmb/docs/grib2/grib2_doc/grib2_table4-0.shtml
+                    if (gfld->ipdtnum != 0) {
+                        add_assoc_string_ex(&results, "error", 5, "Could not read Grib2 data: Not a regular forecast");
+                        break;
+                    }
+
+                    // We only handle categories 0 to 2
+                    // https://www.nco.ncep.noaa.gov/pmb/docs/grib2/grib2_doc/grib2_table4-0.shtml
+                    if (*(gfld->ipdtmpl) > 2) {
+                        add_assoc_string_ex(&results, "error", 5, "Could not read Grib2 data: Product category handling not implementend");
+                        break;
+                    }
+
+                    lat_points = *(gfld->igdtmpl+8);
+                    lon_points = *(gfld->igdtmpl+7);
+                    lat_step = *(gfld->igdtmpl+17);
+                    lon_step = *(gfld->igdtmpl+16);
+                    start_lat = *(gfld->igdtmpl+11);
+                    start_lon = *(gfld->igdtmpl+12);
+
+                    php_printf("start lon: %d start lat: %d\n", start_lon, start_lat);
+                    php_printf("lon_step: %d lat_step: %d\n", lon_step, lat_step);
+                    php_printf("lon_points: %d lon_points: %d\n", lon_points, lat_points);
+
+                    long cat = *(gfld->ipdtmpl);
+                    long prod = *(gfld->ipdtmpl + 1);
+                    //zval points[gfld->ndpts];
+
+                    const char* prod_name = "Unknown";
+
+                    if (*(gfld->ipdtmpl) <= 2) {
+                        prod_name = products[cat*21+prod];
+                    }
+                    field_names[field] = prod_name;
+
+                    // php_printf("product %s\n", prod_name);
+
+                    //php_printf("%ld-%ld-%ld %ld:%ld:%ld\n", gfld->idsect[5], gfld->idsect[6], gfld->idsect[7], gfld->idsect[8], gfld->idsect[9], gfld->idsect[10]);
+
+                    // {
+                    //   "type": "Feature",
+                    //   "geometry": {
+                    //     "type": "Point",
+                    //     "coordinates": [125.6, 10.1]
+                    //   },
+                    //   "properties": {
+                    //     "name": "Dinagat Islands"
+                    //   }
+                    // }
+                    
+
+                    char buffer[50];
+                    char kbuffer[50];
+
+                    
+                    
+
+                    g2float *p = gfld->fld;
+                    long *v = gfld->ipdtmpl;
+                    long *f = gfld->igdtmpl;
+
+                    // These are the data points
+                    for (k=0; k < gfld->ndpts; k++) {
+                        if (k < 1000) continue;
+                        if (k > 1600) break;
+                        zval point;
+                        // Longitude and latitude
+                        zval geometry;
+                        if (k > highest_index || (k == 0 && highest_index == 0)) {
+                            highest_index = k;
+
+                            array_init(&geometry);
+
+                            int lap = k/lon_points;
+                            float latitude = roundf(((float)start_lat - (float)lap * (float)lat_step)/10000.0)/100;
+
+                            int lop = k%lon_points;
+                            float longitude = roundf(((float)start_lon + (float)lop * (float)lon_step)/10000.0)/100;
+
+                            add_index_double(&geometry, 0, longitude);
+                            add_index_double(&geometry, 1, latitude);
+                            
+                            array_init(&point);
+                            add_assoc_string_ex(&point, "type", 4, "Feature");
+                            add_assoc_zval(&point, "geometry", &geometry);
+                            
+                            points_values[field*totalfields + k] = *p;
+                            add_index_zval(&results, k, &point);
+                        } else {
+                            // php_printf("numfield next: %ld\n", field);
+
+                            points_values[field*totalfields + k] = *p;
+                        }
+
+                        p++;
+                    }
+
+                    
+                    
+                    g2_free(gfld);
+                    field++;
+
+                }
+                
+                free(cgrib);
+            }
+
+            // add all points
+
+            // for (long j=0; j < 20; j++) {
+                // zval properties = points_properties[j];
+                // add_assoc_zval_ex(&point, "properties", 10, &properties);
+                //add_assoc_zval(&results, "data", &points[1]);
+            // }
+
+            // if (Z_TYPE_P(points) == IS_NULL) {
+            //     php_printf("is null");
+            // }
+
+            //add_assoc_zval(&results, "data", &bla);
+
+            zend_array *ret = Z_ARR(results);
+
+            zval result;
+            array_init(&result);
+            zend_ulong idx;
+            zend_string *key;
+            zval *val; 
+
+            ZEND_HASH_FOREACH_KEY_VAL(ret, idx, key, val) {
+                zval props;
+                array_init(&props);
+                for (long l=0; l < totalfields; l++) {
+                    // php_printf("prop %s val: %f\n", field_names[l], points_values[l*numfields+j]);
+                    add_assoc_double(&props, field_names[l], points_values[l*numfields+idx]);
+                }
+
+                add_assoc_zval_ex(val, "properties", 10, &props);
+
+                add_next_index_zval(&result, val);
+                
+            } ZEND_HASH_FOREACH_END(); 
+
+            // for (long j=0; j <= 100; j++) {
+            //     zval props;
+            //     array_init(&props);
+
+            //     for (long l=0; l < totalfields; l++) {
+            //         // php_printf("prop %s val: %f\n", field_names[l], points_values[l*numfields+j]);
+            //         add_assoc_double(&props, field_names[l], points_values[l*numfields+j]);
+            //     }
+
+            //     zval poin = *zend_hash_index_find(ret, j);
+
+            //     add_assoc_zval_ex(&poin, "properties", 10, &props);
+
+            //     zend_hash_index_update(ret, j, &poin);
+            // }
+
+            zend_array *ret2 = Z_ARR(result);
+
+            RETVAL_ARR(ret2);
+
+        } else {
+            zend_throw_exception(zend_exception_get_default(TSRMLS_C), "File does not exist", 0 TSRMLS_CC);
+        }
+    }
+    return;
+}
