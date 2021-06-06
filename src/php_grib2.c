@@ -106,6 +106,10 @@ PHP_FUNCTION(read_grib2_file) {
     FILE   *fptr;
     size_t  lengrib;
 
+    ZEND_BEGIN_ARG_INFO_EX(arginfo_read_grib2_file, 0, 0, 1)
+        ZEND_ARG_INFO(0, filename)
+    ZEND_END_ARG_INFO()
+
 
     if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "s", &filename, &filename_len) == FAILURE) {
         zend_throw_exception(zend_exception_get_default(TSRMLS_C), "File argument required", 0 TSRMLS_CC);
@@ -292,12 +296,27 @@ PHP_FUNCTION(grib2_file_to_geojson) {
     gribfield  *gfld;
     FILE   *fptr;
     size_t  lengrib;
+    zval *min_lng_lat;
+    zval *max_lng_lat;
+
+    ZEND_BEGIN_ARG_INFO_EX(arginfo_read_grib2_file, 0, 0, 1)
+        ZEND_ARG_INFO(0, filename)
+        ZEND_ARG_ARRAY_INFO(0, min_lng_lat, 1)
+        ZEND_ARG_ARRAY_INFO(0, max_lng_lat, 1)
+    ZEND_END_ARG_INFO()
 
 
-    if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "s", &filename, &filename_len) == FAILURE) {
-        zend_throw_exception(zend_exception_get_default(TSRMLS_C), "File argument required", 0 TSRMLS_CC);
-        RETURN_NULL();
-    }
+    // if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "s|aa", &filename, &filename_len, &min_lng_lat, &max_lng_lat) == FAILURE) {
+    //     zend_throw_exception(zend_exception_get_default(TSRMLS_C), "File argument required", 0 TSRMLS_CC);
+    //     RETURN_NULL();
+    // }
+
+    ZEND_PARSE_PARAMETERS_START(1, 3)
+        Z_PARAM_STRING(filename, filename_len);
+        Z_PARAM_OPTIONAL
+        Z_PARAM_ARRAY(min_lng_lat);
+        Z_PARAM_ARRAY(max_lng_lat);
+    ZEND_PARSE_PARAMETERS_END();
 
 
     if (filename_len) {
@@ -317,6 +336,56 @@ PHP_FUNCTION(grib2_file_to_geojson) {
 
         long field = 0;
         long totalfields = 0;
+
+        double min_lat = -90.0;
+        double max_lat = 90.0;
+
+        double min_lon = 0.0;
+        double max_lon = 360.0;
+
+        zend_ulong idx;
+        zend_string *key;
+        zval *val;
+        bool exists = false;
+
+        if (Z_TYPE_P(min_lng_lat) == IS_ARRAY) {
+            ZEND_HASH_FOREACH_KEY_VAL(Z_ARR_P(min_lng_lat), idx, key, val) {
+                exists = false;
+                double v = 0.0;
+                if (Z_TYPE_P(val) == IS_LONG) {
+                    v = (double) Z_LVAL_P(val);
+                    exists = true;
+                } else if (Z_TYPE_P(val) == IS_DOUBLE) {
+                    v = (double) Z_DVAL_P(val);
+                    exists = true;
+                }
+                if (idx == 0 && exists == true) {
+                    min_lon = (double) v;
+                }
+                if (idx == 1 && exists == true) {
+                    min_lat = v;
+                }
+            } ZEND_HASH_FOREACH_END();
+        }
+        if (Z_TYPE_P(max_lng_lat) == IS_ARRAY) {
+            ZEND_HASH_FOREACH_KEY_VAL(Z_ARR_P(max_lng_lat), idx, key, val) {
+                exists = false;
+                double v = 0.0;
+                if (Z_TYPE_P(val) == IS_LONG) {
+                    v = (double) Z_LVAL_P(val);
+                    exists = true;
+                } else if (Z_TYPE_P(val) == IS_DOUBLE) {
+                    v = (double) Z_DVAL_P(val);
+                    exists = true;
+                }
+                if (idx == 0 && exists == true) {
+                    max_lon = (double) v;
+                }
+                if (idx == 1 && exists == true) {
+                    max_lat = v;
+                }
+            } ZEND_HASH_FOREACH_END();
+        }
 
 
         if (fptr != NULL) {
@@ -401,10 +470,15 @@ PHP_FUNCTION(grib2_file_to_geojson) {
                     lon_step = *(gfld->igdtmpl+16);
                     start_lat = *(gfld->igdtmpl+11);
                     start_lon = *(gfld->igdtmpl+12);
+                    int end_lat = *(gfld->igdtmpl+14);
+                    int end_lon = *(gfld->igdtmpl+15);
 
                     php_printf("start lon: %d start lat: %d\n", start_lon, start_lat);
+                    php_printf("end lon: %d end lat: %d\n", end_lon, end_lat);
                     php_printf("lon_step: %d lat_step: %d\n", lon_step, lat_step);
                     php_printf("lon_points: %d lon_points: %d\n", lon_points, lat_points);
+                    php_printf("min_lon: %f min_lat: %f\n", min_lon, min_lat);
+                    php_printf("max_lon: %f max_lat: %f\n", max_lon, max_lat);
 
                     long cat = *(gfld->ipdtmpl);
                     long prod = *(gfld->ipdtmpl + 1);
@@ -436,33 +510,48 @@ PHP_FUNCTION(grib2_file_to_geojson) {
                     char buffer[50];
                     char kbuffer[50];
 
-                    
-                    
-
                     g2float *p = gfld->fld;
                     long *v = gfld->ipdtmpl;
                     long *f = gfld->igdtmpl;
 
                     // These are the data points
                     for (k=0; k < gfld->ndpts; k++) {
-                        if (k < 1000) continue;
-                        if (k > 1600) break;
+                        // if (k < 1400) continue;
+                        // if (k > 1500) break;
                         zval point;
                         // Longitude and latitude
                         zval geometry;
+                        zval coordinates;
                         if (k > highest_index || (k == 0 && highest_index == 0)) {
                             highest_index = k;
 
-                            array_init(&geometry);
-
                             int lap = k/lon_points;
-                            float latitude = roundf(((float)start_lat - (float)lap * (float)lat_step)/10000.0)/100;
+
+                            float ln = (float)lap * (float)lat_step;
+
+                            if (end_lat < start_lat) {
+                                ln = -ln;
+                            }
+
+                            float latitude = roundf(((float)start_lat + ln)/10000.0)/100.0;
+
 
                             int lop = k%lon_points;
-                            float longitude = roundf(((float)start_lon + (float)lop * (float)lon_step)/10000.0)/100;
+                            float longitude = roundf(((float)start_lon + (float)lop * (float)lon_step)/10000.0)/100.0;
 
-                            add_index_double(&geometry, 0, longitude);
-                            add_index_double(&geometry, 1, latitude);
+                            if (latitude > max_lat || latitude < min_lat || longitude > max_lon || longitude < min_lon) {
+                                continue;
+                            }
+
+                            array_init(&geometry);
+                            array_init(&coordinates);
+
+                            add_index_double(&coordinates, 0, longitude);
+                            add_index_double(&coordinates, 1, latitude);
+
+                            add_assoc_string(&geometry, "type", "Point");
+                            add_assoc_zval(&geometry, "coordinates", &coordinates);
+                            
                             
                             array_init(&point);
                             add_assoc_string_ex(&point, "type", 4, "Feature");
@@ -471,8 +560,6 @@ PHP_FUNCTION(grib2_file_to_geojson) {
                             points_values[field*totalfields + k] = *p;
                             add_index_zval(&results, k, &point);
                         } else {
-                            // php_printf("numfield next: %ld\n", field);
-
                             points_values[field*totalfields + k] = *p;
                         }
 
